@@ -26,7 +26,7 @@ app.post('/api/change-password', async (req, res) => {
         return res.json({ status: 'error', error: 'Invalid password' })
     }
 
-    if(plainTextPassword.length < 5) {
+    if(plainTextPassword.length < 6) {
         return res.json({ status: 'error', error: 'Password should be at least 6 characters' })
     }
 
@@ -50,11 +50,13 @@ app.post('/api/change-password', async (req, res) => {
 })
 
 app.post('/api/login', async (req, res) => {
-    const { username, password } = req.body
-    const user = await User.findOne({ username }).lean()
-
+    const usernameOrEmail = req.body.usernameOrEmail;
+    const password = req.body.password;
+    console.log(usernameOrEmail);
+    const user = await User.findOne({ $or: [{ username: usernameOrEmail }, { email: usernameOrEmail }] }).lean()
+    console.log(user);
     if (!user) {
-        return res.json({ status: 'error', error: 'Invalid username/password' })
+        return res.status(400).json({ status: 'error', error: 'Invalid username or email/password combination' })
     }
 
     if(await bcrypt.compare(password, user.password)) {
@@ -63,7 +65,8 @@ app.post('/api/login', async (req, res) => {
         const token = jwt.sign(
             { 
                 id: user._id, 
-                username: user.username 
+                username: user.username,
+                email: user.email 
             }, 
             JWT_SECRET
         )
@@ -71,22 +74,27 @@ app.post('/api/login', async (req, res) => {
         return res.json({ status: 'ok', data: token })
     }
 
-    res.json({ status: 'error', error: 'Invalid username/password' })
+    res.status(400).json({ status: 'error', error: 'Invalid username or email/password combination' })
 })
 
 app.post('/api/register', async (req, res) => {
-    const { username, password: plainTextPassword } = req.body
+    const { username, password: plainTextPassword, email } = req.body
+    const validEmailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     if(!username || typeof username !== 'string') {
-        return res.json({ status: 'error', error: 'Invalid username' })
+        return res.status(400).json({ status: 'error', error: 'Invalid username' })
+    }
+
+    if(!email || !validEmailRegex.test(email)) {
+        return res.status(400).json({ status: 'error', error: 'Invalid email' })
     }
 
     if(!plainTextPassword || typeof plainTextPassword !== 'string') {
-        return res.json({ status: 'error', error: 'Invalid password' })
+        return res.status(400).json({ status: 'error', error: 'Invalid password' })
     }
 
-    if(plainTextPassword.length < 5) {
-        return res.json({ status: 'error', error: 'Password should be at least 6 characters' })
+    if(plainTextPassword.length < 6) {
+        return res.status(400).json({ status: 'error', error: 'Password should be at least 6 characters' })
     }
 
     const password = await bcrypt.hash(plainTextPassword, 10)
@@ -94,13 +102,14 @@ app.post('/api/register', async (req, res) => {
     try{
         const response = await User.create({
             username,
-            password
+            password,
+            email
         })
         console.log('User created successfully: ', response)
     } catch(error) {
         if (error.code === 11000) {
             //duplicate key
-            return res.json({ status: 'error', error: 'Username already in use' })
+            return res.json({ status: 'error', error: 'Username or Email already in use' })
         }
         throw error
     }
@@ -108,6 +117,6 @@ app.post('/api/register', async (req, res) => {
     res.json({ status: 'ok' })
 })
 
-app.listen(9999, () => {
-    console.log('Server up at 9999')
+app.listen(8000, () => {
+    console.log('Server up at 8000')
 })

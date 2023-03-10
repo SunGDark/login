@@ -8,8 +8,10 @@
     <body>
 		<h1>Registration</h1>
 		<form id="reg-form">
+			<input type="email" autocomplete="off" id="email" placeholder="Email" />
 			<input type="text" autocomplete="off" id="username" placeholder="Username" />
 			<input type="password" autocomplete="off" id="password" placeholder="Password" />
+			<input type="password" autocomplete="off" id="password-confirm" placeholder="Confirm Password" />
 			<input type="submit" value="Submit Form" />
 		</form>
 
@@ -19,8 +21,15 @@
 
 			async function registerUser(event) {
 				event.preventDefault()
+				const email = document.getElementById('email').value
 				const username = document.getElementById('username').value
 				const password = document.getElementById('password').value
+				const passwordConfirm = document.getElementById('password-confirm').value;
+
+				if (password !== passwordConfirm) {
+					alert('Passwords do not match!');
+					return;
+				}
 
 				const result = await fetch('/api/register', {
 					method: 'POST',
@@ -29,6 +38,7 @@
 					},
 					body: JSON.stringify({
 						username, 
+						email,
 						password
 					})
 				}).then((res) => res.json())

@@ -8,7 +8,7 @@
     <body>
 		<h1>Login</h1>
 		<form id="login">
-			<input type="text" autocomplete="off" id="username" placeholder="Username" />
+			<input type="text" autocomplete="off" id="usernameOrEmail" placeholder="Username or Email" />
 			<input type="password" autocomplete="off" id="password" placeholder="Password" />
 			<input type="submit" value="Submit Form" />
 		</form>
@@ -19,27 +19,39 @@
 
 			async function login(event) {
 				event.preventDefault()
-				const username = document.getElementById('username').value
+				const usernameOrEmail = document.getElementById('usernameOrEmail').value;
+				const username = document.getElementById('usernameOrEmail').value
 				const password = document.getElementById('password').value
+				const validEmailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-				const result = await fetch('/api/login', {
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json'
-					},
-					body: JSON.stringify({
-						username, 
-						password
-					})
-				}).then((res) => res.json())
-
-				if(result.status === 'ok') {
-					//everything is a okay
-                    console.log('Got the token: ', result.data)
-                    localStorage.setItem('token', result.data)
-					alert('Success');
+				let authData
+				if (validEmailRegex.test(usernameOrEmail)) {
+					authData = { usernameOrEmail, password }
 				} else {
-					alert(result.error);
+					authData = { usernameOrEmail, password }
+				}
+
+				try {
+					const response = await fetch('/api/login', {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json'
+						},
+						body: JSON.stringify(authData)
+					});
+					const result = await response.json();
+
+					if (result.status === 'ok') {
+						//everything is a okay
+						console.log('Got the token: ', result.data)
+						localStorage.setItem('token', result.data)
+						alert('Success');
+					} else {
+						alert(result.error);
+					}
+				} catch (error) {
+					console.error(error);
+					alert('An error ocurred while logging in.');
 				}
 			}
 		</script>
