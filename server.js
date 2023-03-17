@@ -6,9 +6,11 @@ const User = require('./model/user')
 const bcrypt = require('bcryptjs')
 const jwt = require('jsonwebtoken')
 require('dotenv').config()
+const session = require('express-session');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const DATABASE_LINK = process.env.DATABASE_LINK;
+const SESSION_SECRET = process.env.SESSION_SECRET;
 
 mongoose.connect(DATABASE_LINK, {
     useNewUrlParser: true,
@@ -16,8 +18,36 @@ mongoose.connect(DATABASE_LINK, {
 })
 
 const app = express()
+
+// Session configuration
+app.use(session({
+    secret: SESSION_SECRET,
+    resave: false,
+    saveUninitialized: true
+}));
+
 app.use('/', express.static(path.join(__dirname, 'static')))
 app.use(bodyParser.json())
+
+// Check if user is logged in
+const isLoggedIn = (req, res, next) => {
+    if (req.session.user) {
+        next();
+    } else {
+        res.status(401).send("Not logged in");
+    }
+};
+
+// Display the username of the logged-in user
+app.get('/api/user', isLoggedIn, (req, res) => {
+    res.send(req.session.user.username);
+});
+
+// Log out the user
+app.post('/api/logout', isLoggedIn, (req, res) => {
+    req.session.destroy();
+    res.send("Logged out successfully");
+});
 
 app.post('/api/change-password', async (req, res) => {
     const { token, newpassword: plainTextPassword } = req.body
@@ -55,6 +85,7 @@ app.post('/api/login', async (req, res) => {
     console.log(usernameOrEmail);
     const user = await User.findOne({ $or: [{ username: usernameOrEmail }, { email: usernameOrEmail }] }).lean()
     console.log(user);
+    
     if (!user) {
         return res.status(400).json({ status: 'error', error: 'Invalid username or email/password combination' })
     }
@@ -71,11 +102,40 @@ app.post('/api/login', async (req, res) => {
             JWT_SECRET
         )
 
-        return res.json({ status: 'ok', data: token })
+        // set the cookie
+        res.cookie('token', token, {
+            httpOnly: true,
+            secure: true,
+            sameSite: 'none',
+            maxAge: 3600000 // 1 hour
+        })
+       
+
+        // create a session for the user
+        req.session.user = {id: user._id, username: user.username, email: user.email };
+        res.json({ status: 'ok', data: token, username: user.username });
+    } else {
+        res.status(400).json({ status: 'error', error: 'Invalid username or email/password combination' })
+    }
+});
+
+// redirect to welcome page
+app.get('/welcome.html', (req, res) => {
+    const token = req.cookies.token;
+    if (!token) {
+        return res.redirect('/login.html');
     }
 
-    res.status(400).json({ status: 'error', error: 'Invalid username or email/password combination' })
-})
+    try {
+        const decodedToken = jwt.verify(token, JWT_SECRET);
+        res.render('welcome', { username: decodedToken.username });
+    } catch (err) {
+        console.error(err);
+        res.redirect('/login.html');
+    }
+});
+
+
 
 app.post('/api/register', async (req, res) => {
     const { username, password: plainTextPassword, email } = req.body
@@ -117,6 +177,6 @@ app.post('/api/register', async (req, res) => {
     res.json({ status: 'ok' })
 })
 
-app.listen(8000, () => {
-    console.log('Server up at 8000')
+app.listen(3333, () => {
+    console.log('Server up at 3333')
 })
