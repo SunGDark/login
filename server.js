@@ -113,7 +113,9 @@ app.post('/api/login', async (req, res) => {
 
         // create a session for the user
         req.session.user = {id: user._id, username: user.username, email: user.email };
-        res.json({ status: 'ok', data: token, username: user.username });
+        //console.log(req.session.user)
+        // res.json({ status: 'ok', data: token, username: user.username });
+        res.redirect('/welcome.html');
     } else {
         res.status(400).json({ status: 'error', error: 'Invalid username or email/password combination' })
     }
