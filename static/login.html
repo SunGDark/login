@@ -20,7 +20,7 @@
 			async function login(event) {
 				event.preventDefault()
 				const usernameOrEmail = document.getElementById('usernameOrEmail').value;
-				const username = document.getElementById('usernameOrEmail').value
+				// const username = document.getElementById('usernameOrEmail').value
 				const password = document.getElementById('password').value
 				const validEmailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -46,6 +46,7 @@
 						console.log('Got the token: ', result.data)
 						localStorage.setItem('token', result.data)
 						alert('Success');
+						window.location.href = 'welcome.html'
 					} else {
 						alert(result.error);
 					}
