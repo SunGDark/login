@@ -46,6 +46,7 @@
 						console.log('Got the token: ', result.data)
 						localStorage.setItem('token', result.data)
 						alert('Success');
+						sessionStorage.setItem('username', result.username);
 						window.location.href = 'welcome.html'
 					} else {
 						alert(result.error);
