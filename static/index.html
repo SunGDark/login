@@ -3,15 +3,15 @@
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<title>Document</title>
+		<title>Registration</title>
 	</head>
     <body>
 		<h1>Registration</h1>
 		<form id="reg-form">
-			<input type="email" autocomplete="off" id="email" placeholder="Email" />
-			<input type="text" autocomplete="off" id="username" placeholder="Username" />
-			<input type="password" autocomplete="off" id="password" placeholder="Password" />
-			<input type="password" autocomplete="off" id="password-confirm" placeholder="Confirm Password" />
+			<input type="email" autocomplete="off" id="email" placeholder="Email" required/>
+			<input type="text" autocomplete="off" id="username" placeholder="Username" required/>
+			<input type="password" autocomplete="off" id="password" placeholder="Password" required/>
+			<input type="password" autocomplete="off" id="password-confirm" placeholder="Confirm Password" required/>
 			<input type="submit" value="Submit Form" />
 		</form>
 
@@ -46,6 +46,8 @@
 				if(result.status === 'ok') {
 					//everything is a okay
 					alert('Success');
+					window.location.href = 'verification.html'
+
 				} else {
 					alert(result.error);
 				}

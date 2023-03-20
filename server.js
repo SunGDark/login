@@ -3,14 +3,24 @@ const path = require('path')
 const bodyParser = require('body-parser')
 const mongoose = require('mongoose')
 const User = require('./model/user')
+const UserVerification = require('./model/UserVerification')
+//const UserOTPVerification = require('./model/UserOTPVerification')
 const bcrypt = require('bcryptjs')
 const jwt = require('jsonwebtoken')
 const session = require('express-session')
+const nodemailer = require('nodemailer')
+// unique string version 4
+const {v4: uuidv4} = require('uuid')
 require('dotenv').config()
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const DATABASE_LINK = process.env.DATABASE_LINK;
-const SESSION_SECRET = process.env.SESSION_SECRET
+const SESSION_SECRET = process.env.SESSION_SECRET;
+const AUTH_EMAIL = process.env.AUTH_EMAIL;
+const AUTH_PASS = process.env.AUTH_PASS;
+const PORT = process.env.PORT;
+
+const port = PORT || 8000
 
 mongoose.connect(DATABASE_LINK, {
     useNewUrlParser: true,
@@ -156,11 +166,16 @@ app.post('/api/register', async (req, res) => {
 
     const password = await bcrypt.hash(plainTextPassword, 10)
 
+    const verificationCode = Math.floor(1000 + Math.random() * 9000) // Generate a 4 digit verification code
+
     try{
         const response = await User.create({
             username,
             password,
-            email
+            email,
+            verified: false,
+            verificationCode: verificationCode // Save the verification code in the database
+
         })
         console.log('User created successfully: ', response)
     } catch(error) {
@@ -171,9 +186,76 @@ app.post('/api/register', async (req, res) => {
         throw error
     }
 
+    //Send verification email to user
+    const transporter = nodemailer.createTransport({
+        host: 'smtp.office365.com',
+        port: 587,
+        secure: false,
+        auth: {
+            user: AUTH_EMAIL,
+            pass: AUTH_PASS
+        }
+    });
+
+    const mailOptions =  {
+        from: AUTH_EMAIL,
+        to: email,
+        subject: 'Email Verification',
+        text: `Your verification code is: ${verificationCode}`
+    }
+    
+    transporter.sendMail(mailOptions);
+
+    // testing success
+    transporter.verify((error, success) => {
+        if(error) {
+            console.log(error);
+        } else {
+            console.log("Ready for messages");
+            console.log(success);
+        }
+    })
+
     res.json({ status: 'ok' })
+
+    // res.redirect('/verification.html'); // Redirect to verification page
+
 })
 
-app.listen(8000, () => {
-    console.log('Server up at 8000')
-})
+app.post('/api/resend-code', async (req, res) => {
+    const { email } = req.body;
+  
+    // check if email is valid
+    const validEmailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email || !validEmailRegex.test(email)) {
+      return res.status(400).json({ status: 'error', error: 'Invalid email' })
+    }
+  
+    // generate new verification code
+    const verificationCode = Math.floor(1000 + Math.random() * 9000);
+  
+    // update user data with new verification code
+    const user = await User.findOneAndUpdate({ email }, { verificationCode }, { new: true });
+    if (!user) {
+      return res.status(400).json({ status: 'error', error: 'User not found' });
+    }
+  
+    // send verification email
+    try {
+      await transporter.sendMail({
+        from: AUTH_EMAIL,
+        to: user.email,
+        subject: 'Verification Code',
+        text: `Your verification code is: ${verificationCode}`,
+      });
+      res.json({ status: 'ok' });
+    } catch (error) {
+      console.log(error);
+      res.status(500).json({ status: 'error', error: 'Failed to send email' });
+    }
+  });
+  
+
+app.listen(port, () => {
+    console.log(`Server running on port ${port}`);
+});
