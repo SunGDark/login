@@ -47,6 +47,27 @@ const isLoggedIn = (req, res, next) => {
     }
 };
 
+//Send verification email to user
+const transporter = nodemailer.createTransport({
+    host: 'smtp.office365.com',
+    port: 587,
+    secure: false,
+    auth: {
+        user: AUTH_EMAIL,
+        pass: AUTH_PASS
+    }
+});
+
+ // testing success
+ transporter.verify((error, success) => {
+    if(error) {
+        console.log(error);
+    } else {
+        console.log("Ready for messages");
+        console.log(success);
+    }
+})
+
 // Display the username of the logged-in user
 app.get('/api/user', isLoggedIn, (req, res) => {
     res.send(req.session.user.username);
@@ -147,6 +168,9 @@ app.get('/welcome.html', (req, res) => {
 app.post('/api/register', async (req, res) => {
     const { username, password: plainTextPassword, email } = req.body
     const validEmailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    username = username.trim()
+    email = email.trim()
+    plainTextPassword = plainTextPassword.trim()
 
     if(!username || typeof username !== 'string') {
         return res.status(400).json({ status: 'error', error: 'Invalid username' })
@@ -186,17 +210,6 @@ app.post('/api/register', async (req, res) => {
         throw error
     }
 
-    //Send verification email to user
-    const transporter = nodemailer.createTransport({
-        host: 'smtp.office365.com',
-        port: 587,
-        secure: false,
-        auth: {
-            user: AUTH_EMAIL,
-            pass: AUTH_PASS
-        }
-    });
-
     const mailOptions =  {
         from: AUTH_EMAIL,
         to: email,
@@ -205,16 +218,6 @@ app.post('/api/register', async (req, res) => {
     }
     
     transporter.sendMail(mailOptions);
-
-    // testing success
-    transporter.verify((error, success) => {
-        if(error) {
-            console.log(error);
-        } else {
-            console.log("Ready for messages");
-            console.log(success);
-        }
-    })
 
     res.json({ status: 'ok' })
 
