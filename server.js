@@ -13,8 +13,8 @@ const nodemailer = require('nodemailer')
 const {v4: uuidv4} = require('uuid')
 require('dotenv').config()
 //cors
-const cors = require("cors");
-app.use(cors());
+//const cors = require("cors");
+//app.use(cors());
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const DATABASE_LINK = process.env.DATABASE_LINK;
@@ -121,9 +121,7 @@ app.post('/api/login', async (req, res) => {
     if (!user) {
         return res.status(400).json({ status: 'error', error: 'Invalid username or email/password combination' })
     } else if (!user.verified) {
-        res.json({
-          status: "FAILED",
-          message: "Email hasn't been verified yet. Check your inbox.",
+        return res.status(400).json({ status: 'error', error: "Email hasn't been verified yet. Check your inbox.",
         });
     } else if(await bcrypt.compare(password, user.password)) {
         // the username, password combination is successful
@@ -301,7 +299,7 @@ const sendVerificationEmail = ({ _id, email }, res) => {
 
 // verify email
 //could have a rout issue here
-router.get("/verify/:userId/:uniqueString", (req, res) => {
+app.get("/verify/:userId/:uniqueString", (req, res) => {
     let { userId, uniqueString } = req.params;
   
     UserVerification.find({ userId })
@@ -397,7 +395,7 @@ router.get("/verify/:userId/:uniqueString", (req, res) => {
 });
 
 // Verified page route
-router.get("/verified", (req, res) => {
+app.get("/verified", (req, res) => {
     res.sendFile(path.join(__dirname, "./../views/verified.html"));
 });
 
