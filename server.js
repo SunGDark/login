@@ -12,6 +12,9 @@ const nodemailer = require('nodemailer')
 // unique string version 4
 const {v4: uuidv4} = require('uuid')
 require('dotenv').config()
+//cors
+const cors = require("cors");
+app.use(cors());
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const DATABASE_LINK = process.env.DATABASE_LINK;
@@ -117,9 +120,12 @@ app.post('/api/login', async (req, res) => {
     console.log(user);
     if (!user) {
         return res.status(400).json({ status: 'error', error: 'Invalid username or email/password combination' })
-    }
-
-    if(await bcrypt.compare(password, user.password)) {
+    } else if (!user.verified) {
+        res.json({
+          status: "FAILED",
+          message: "Email hasn't been verified yet. Check your inbox.",
+        });
+    } else if(await bcrypt.compare(password, user.password)) {
         // the username, password combination is successful
 
         const token = jwt.sign(
@@ -166,99 +172,240 @@ app.get('/welcome.html', (req, res) => {
 });
 
 app.post('/api/register', async (req, res) => {
-    const { username, password: plainTextPassword, email } = req.body
+    let { username, password: plainTextPassword, email } = req.body;
     const validEmailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    username = username.trim()
-    email = email.trim()
-    plainTextPassword = plainTextPassword.trim()
-
-    if(!username || typeof username !== 'string') {
-        return res.status(400).json({ status: 'error', error: 'Invalid username' })
-    }
-
-    if(!email || !validEmailRegex.test(email)) {
-        return res.status(400).json({ status: 'error', error: 'Invalid email' })
-    }
-
-    if(!plainTextPassword || typeof plainTextPassword !== 'string') {
-        return res.status(400).json({ status: 'error', error: 'Invalid password' })
-    }
-
-    if(plainTextPassword.length < 6) {
-        return res.status(400).json({ status: 'error', error: 'Password should be at least 6 characters' })
-    }
-
-    const password = await bcrypt.hash(plainTextPassword, 10)
-
-    const verificationCode = Math.floor(1000 + Math.random() * 9000) // Generate a 4 digit verification code
-
-    try{
-        const response = await User.create({
-            username,
-            password,
-            email,
-            verified: false,
-            verificationCode: verificationCode // Save the verification code in the database
-
+    const password = await bcrypt.hash(plainTextPassword, 10);
+    username = username.trim();
+    email = email.trim();
+    plainTextPassword = plainTextPassword.trim();
+  
+    if (!username || typeof username !== 'string') {
+      return res.status(400).json({ status: 'error', error: 'Invalid username' 
+    });
+    } else if (!email || !validEmailRegex.test(email)) {
+      return res.status(400).json({ status: 'error', error: 'Invalid email' 
+    });
+    } else if (!plainTextPassword || typeof plainTextPassword !== 'string') {
+      return res.status(400).json({ status: 'error', error: 'Invalid password' 
+    });
+    } else if (plainTextPassword.length < 6) {
+      return res.status(400).json({ status: 'error', error: 'Password should be at least 6 characters' 
+    });
+    } else {
+      // Checking if user already exists
+      User.find({ email })
+        .then((result) => {
+          if (result.length) {
+            // A user already exists
+            res.json({
+              status: 'FAILED',
+              message: 'User with the provided email already exists',
+            });
+          } else {
+            const newUser = new User({
+              username,
+              email,
+              password,
+              verified: false,
+            });
+  
+            newUser
+              .save()
+              .then((result) => {
+                // handle account verification
+                sendVerificationEmail(result, res);
+              })
+              .catch((err) => {
+                res.json({
+                  status: 'FAILED',
+                  message: 'An error occurred while saving user account!',
+                });
+              });
+          }
         })
-        console.log('User created successfully: ', response)
-    } catch(error) {
-        if (error.code === 11000) {
-            //duplicate key
-            return res.json({ status: 'error', error: 'Username or Email already in use' })
+        .catch((err) => {
+          console.log(err);
+          res.json({
+            status: 'FAILED',
+            message: 'An error occurred while checking for existing user!',
+          });
+        });
+    }
+}); 
+
+// send verification email
+const sendVerificationEmail = ({ _id, email }, res) => {
+    // url to be used in the email
+    const currentUrl = "http://localhost:8000/";
+  
+    const uniqueString = uuidv4() + _id;
+  
+    // mail options
+    const mailOptions = {
+      from: AUTH_EMAIL,
+      to: email,
+      subject: "Verify Your Email",
+      html: `<p>Verify your email address to complete the signup and log into your account.</p><p>This link 
+      <b>expires in 6 hours</b>.</p><p>Press <a href=${currentUrl + "user/verify/" + _id + "/" + uniqueString
+      }>here</a> to proceed.</p>`,
+    };
+  
+    // hash the uniqueString
+    const saltRounds = 10;
+    bcrypt
+      .hash(uniqueString, saltRounds)
+      .then((hashedUniqueString) => {
+        // set values in userVerification collection
+        const newVerification = new UserVerification({
+          userId: _id,
+          uniqueString: hashedUniqueString,
+          createdAt: Date.now(),
+          expiresAt: Date.now() + 21600000,
+        });
+  
+        newVerification
+          .save()
+          .then(() => {
+            transporter
+              .sendMail(mailOptions)
+              .then(() => {
+                // email sent and verification record saved
+                res.json({
+                  status: "PENDING",
+                  message: "Verification email sent",
+                });
+              })
+              .catch((error) => {
+                console.log(error);
+                res.json({
+                  status: "FAILED",
+                  message: "Verification email failed",
+                });
+              });
+          })
+          .catch((error) => {
+            console.log(error);
+            res.json({
+              status: "FAILED",
+              message: "Couldn't save verification email data!",
+            });
+          });
+      })
+      .catch(() => {
+        res.json({
+          status: "FAILED",
+          message: "An error occurred while hashing email data!",
+        });
+    });
+};
+
+// verify email
+//could have a rout issue here
+router.get("/verify/:userId/:uniqueString", (req, res) => {
+    let { userId, uniqueString } = req.params;
+  
+    UserVerification.find({ userId })
+      .then((result) => {
+        if (result.length > 0) {
+          // user verification record exists so we proceed
+  
+          const { expiresAt } = result[0];
+          const hashedUniqueString = result[0].uniqueString;
+  
+          // checking for expired unique string
+          if (expiresAt < Date.now()) {
+            // record has expired so we delete it
+            UserVerification.deleteOne({ userId })
+              .then((result) => {
+                User.deleteOne({ _id: userId })
+                  .then(() => {
+                    let message = "Link has expired. Please sign up again.";
+                    res.redirect(`/user/verified?error=true&message=${message}`);
+                  })
+                  .catch((error) => {
+                    let message =
+                      "Clearing user with expired unique string failed";
+                    res.redirect(`/user/verified?error=true&message=${message}`);
+                  });
+              })
+              .catch((error) => {
+                console.log(error);
+                let message =
+                  "An error occurred while clearing expired user verification record";
+                res.redirect(`/user/verified?error=true&message=${message}`);
+              });
+          } else {
+            // valid record exists so we validate the user string
+            // First compare the hashed unique string
+  
+            bcrypt
+              .compare(uniqueString, hashedUniqueString)
+              .then((result) => {
+                if (result) {
+                  // strings match
+  
+                  User.updateOne({ _id: userId }, { verified: true })
+                    .then(() => {
+                      UserVerification.deleteOne({ userId })
+                        .then(() => {
+                          res.sendFile(
+                            path.join(__dirname, "./../views/verified.html")
+                          );
+                        })
+                        .catch((error) => {
+                          console.log(error);
+                          let message =
+                            "An error occurred while finalizing successful verification.";
+                          res.redirect(
+                            `/user/verified?error=true&message=${message}`
+                          );
+                        });
+                    })
+                    .catch((error) => {
+                      console.log(error);
+                      let message =
+                        "An error occurred while updating user record to show verified.";
+                      res.redirect(
+                        `/user/verified?error=true&message=${message}`
+                      );
+                    });
+                } else {
+                  // existing record but incorrect verification details passed.
+                  let message =
+                    "Invalid verification details passed. Check your inbox.";
+                  res.redirect(`/user/verified?error=true&message=${message}`);
+                }
+              })
+              .catch((error) => {
+                let message = "An error occurred while comparing unique strings.";
+                res.redirect(`/user/verified?error=true&message=${message}`);
+              });
+          }
+        } else {
+          // user verification record doesn't exist
+          let message =
+            "Account record doesn't exist or has been verified already. Please sign up or log in.";
+          res.redirect(`/user/verified?error=true&message=${message}`);
         }
-        throw error
-    }
+      })
+      .catch((error) => {
+        console.log(error);
+        let message =
+          "An error occurred while checking for existing user verification record";
+        res.redirect(`/user/verified?error=true&message=${message}`);
+    });
+});
 
-    const mailOptions =  {
-        from: AUTH_EMAIL,
-        to: email,
-        subject: 'Email Verification',
-        text: `Your verification code is: ${verificationCode}`
-    }
-    
-    transporter.sendMail(mailOptions);
+// Verified page route
+router.get("/verified", (req, res) => {
+    res.sendFile(path.join(__dirname, "./../views/verified.html"));
+});
 
-    res.json({ status: 'ok' })
+//res.json({ status: 'ok' })
 
-    // res.redirect('/verification.html'); // Redirect to verification page
+// res.redirect('/verification.html'); // Redirect to verification page
 
-})
-
-app.post('/api/resend-code', async (req, res) => {
-    const { email } = req.body;
-  
-    // check if email is valid
-    const validEmailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!email || !validEmailRegex.test(email)) {
-      return res.status(400).json({ status: 'error', error: 'Invalid email' })
-    }
-  
-    // generate new verification code
-    const verificationCode = Math.floor(1000 + Math.random() * 9000);
-  
-    // update user data with new verification code
-    const user = await User.findOneAndUpdate({ email }, { verificationCode }, { new: true });
-    if (!user) {
-      return res.status(400).json({ status: 'error', error: 'User not found' });
-    }
-  
-    // send verification email
-    try {
-      await transporter.sendMail({
-        from: AUTH_EMAIL,
-        to: user.email,
-        subject: 'Verification Code',
-        text: `Your verification code is: ${verificationCode}`,
-      });
-      res.json({ status: 'ok' });
-    } catch (error) {
-      console.log(error);
-      res.status(500).json({ status: 'error', error: 'Failed to send email' });
-    }
-  });
-  
 
 app.listen(port, () => {
-    console.log(`Server running on port ${port}`);
+console.log(`Server running on port ${port}`);
 });
